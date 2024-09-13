@@ -16,7 +16,7 @@ use crate::segmentation::{USER_CODE, USER_DATA};
 use super::UserContext;
 
 /// Defines the usermode-kernelmode ABI for x86 platforms.
-pub struct Boundary(());
+pub struct Boundary;
 
 impl Boundary {
     /// Minimum required size for initial process memory.
@@ -30,7 +30,7 @@ impl Boundary {
 
     /// Constructs a new instance of `SysCall`.
     pub fn new() -> Self {
-        Self(())
+        Self
     }
 }
 
