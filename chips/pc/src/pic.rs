@@ -10,6 +10,7 @@
 //! * https://github.com/rust-osdev/pic8259
 
 use x86::io;
+use tock_x86::IDT_RESERVED_EXCEPTIONS;
 
 /// PIC initialization command
 const PIC_CMD_INIT: u8 = 0x10;
@@ -31,7 +32,10 @@ const PIC1_CMD: u16 = 0x20;
 const PIC1_DATA: u16 = PIC1_CMD + 1;
 
 /// Offset to which PIC 1 interrupts are re-mapped
-const PIC1_OFFSET: u8 = 32;
+const PIC1_OFFSET: u8 = IDT_RESERVED_EXCEPTIONS;
+
+/// Number of interrupts handled by PIC 1
+const PIC1_NUM_INTERRUPTS: u8 = 8; // IRQ 0-7
 
 /// I/O port address of PIC 2 command register
 const PIC2_CMD: u16 = 0xa0;
@@ -40,7 +44,10 @@ const PIC2_CMD: u16 = 0xa0;
 const PIC2_DATA: u16 = PIC2_CMD + 1;
 
 /// Offset to which PIC 2 interrupts are re-mapped
-const PIC2_OFFSET: u8 = 40;
+const PIC2_OFFSET: u8 = PIC1_OFFSET + PIC1_NUM_INTERRUPTS;
+
+/// I/O dummy port used for introducing a delay between PIC commands
+const POST_PORT: u16 = 0x80;
 
 /// Initializes the system's primary and secondary PICs in a chained configuration and unmasks all
 /// interrupts.
@@ -52,7 +59,7 @@ const PIC2_OFFSET: u8 = 40;
 /// [`handlers::init`][super::handlers::init]).
 pub(crate) unsafe fn init() {
     unsafe {
-        let wait = || io::outb(0x80, 0);
+        let wait = || io::outb(POST_PORT, 0);
 
         // Begin initialization
         io::outb(PIC1_CMD, PIC_CMD_INIT | PIC_CMD_INIT_NO_ICW4);
