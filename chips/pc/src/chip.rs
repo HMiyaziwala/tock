@@ -17,6 +17,18 @@ use crate::serial::{SerialPort, SerialPortComponent, COM1_BASE, COM2_BASE, COM3_
 
 use x86::bits32::paging::{PD, PT};
 
+/// Base interrupt number for IRQs 0-7 on x86.
+pub const IRQ_INT_BASE: u32 = 32;
+
+/// IRQ 0: PIT timer
+const IRQ0: u32 = IRQ_INT_BASE + 0;
+
+/// IRQ 3: COM2 and COM4
+const IRQ3: u32 = IRQ_INT_BASE + 3;
+
+/// IRQ 4: COM1 and COM3
+const IRQ4: u32 = IRQ_INT_BASE + 4;
+
 /// Representation of a generic PC platform.
 ///
 /// This struct serves as an implementation of Tock's [`Chip`] trait for the x86 PC platform. The
@@ -60,14 +72,12 @@ impl<'a, const PR: u16> Chip for Pc<'a, PR> {
         InterruptPoller::access(|poller| {
             while let Some(num) = poller.next_pending() {
                 match num {
-                    32 => self.pit.handle_interrupt(),
-                    35 => {
-                        // Legacy IRQ 3 is shared by COM2 and COM4
+                    IRQ0 => self.pit.handle_interrupt(),
+                    IRQ3 => {
                         self.com2.handle_interrupt();
                         self.com4.handle_interrupt();
                     }
-                    36 => {
-                        // Legacy IRQ 4 is shared by COM1 and COM3
+                    IRQ4 => {
                         self.com1.handle_interrupt();
                         self.com3.handle_interrupt();
                     }
