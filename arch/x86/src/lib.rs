@@ -43,6 +43,7 @@ pub use boundary::Boundary;
 
 mod interrupts;
 pub use interrupts::InterruptPoller;
+pub use interrupts::IDT_RESERVED_EXCEPTIONS;
 
 mod segmentation;
 

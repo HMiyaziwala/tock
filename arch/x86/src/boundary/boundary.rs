@@ -10,14 +10,10 @@ use kernel::process::FunctionCall;
 use kernel::syscall::{ContextSwitchReason, Syscall, SyscallReturn, UserspaceKernelBoundary};
 use kernel::ErrorCode;
 
-use crate::interrupts::SYSCALL_VECTOR;
+use crate::interrupts::{SYSCALL_VECTOR, IDT_RESERVED_EXCEPTIONS};
 use crate::segmentation::{USER_CODE, USER_DATA};
 
 use super::UserContext;
-
-/// Number of exceptions reserved in the IDT by Intel.
-/// Reference: https://en.wikipedia.org/wiki/Interrupt_descriptor_table#Common_IDT_layouts
-pub const IDT_RESERVED_EXCEPTIONS: u8 = 32;
 
 /// Defines the usermode-kernelmode ABI for x86 platforms.
 pub struct Boundary;
