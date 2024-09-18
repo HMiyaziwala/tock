@@ -29,6 +29,7 @@ use kernel::hil::uart::{
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
 use tock_cells::take_cell::TakeCell;
+use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 /// Base I/O port address of the standard COM1 serial device.
 pub const COM1_BASE: u16 = 0x03F8;
@@ -45,58 +46,87 @@ pub const COM4_BASE: u16 = 0x02E8;
 /// Fixed clock frequency used to generate baud rate on 8250-compatible UART devices.
 const BAUD_CLOCK: u32 = 115_200;
 
-/// Offset of the interrupt enable register, relative to the serial port base address.
-const IER_REG_OFFSET: u16 = 1;
+/// The following offsets are relative to the base I/O port address of an 8250-compatible UART
+/// device. Reference: https://en.wikibooks.org/wiki/Serial_Programming/8250_UART_Programming
+mod offsets {
+    /// Transmit Holding Register
+    pub(crate) const THR: u16 = 0;
 
-/// Bitmask for the "transmit hold register empty" flag of IER.
-///
-/// This flag, when set, causes the device to generate an interrupt when the transmit buffer is
-/// empty and ready to receive another byte.
-const IER_THRE_MASK: u8 = 0b0000_0010;
+    /// Receive Buffer Register
+    pub(crate) const RBR: u16 = 0;
 
-/// Bitmask for the "received data available" flag of IER.
-///
-/// This flag, when set, causes the device to generate an interrupt when the receive FIFO contains
-/// data to be read.
-const IER_RDA_MASK: u8 = 0b0000_0001;
+    /// Divisor Latch Low Register
+    pub(crate) const DLL: u16 = 0;
 
-/// Offset of the interrupt identification register, relative to serial port base address.
-const IIR_REG_OFFSET: u16 = 2;
+    /// Interrupt Enable Register
+    pub(crate) const IER: u16 = 1;
 
-/// Bitmask for the interrupt pending flag of IIR.
-///
-/// This flag, when cleared, indicates that this serial port currently has an interrupt panding.
-const IIR_REG_IP_MASK: u8 = 0b0000_0001;
+    /// Divisor Latch High Register
+    pub(crate) const DLH: u16 = 1;
 
-/// Bitmask for the interrupt ID field of IIR.
-///
-/// When an interrupt is pending, this field identifies the cause interrupt cause. See the other
-/// `IIR_REG_IID_*` constants for possible causes.
-const IIR_REG_IID_MASK: u8 = 0b0000_1110;
+    /// Interrupt Identification Register
+    pub(crate) const IIR: u16 = 2;
 
-/// Identifies the transmit buffer empty interrupt.
-/// This interrupt clears on read.
-const IIR_REG_IID_TBE: u8 = 0b0000_0010;
+    /// FIFO Control Register
+    pub(crate) const FCR: u16 = 2;
 
-/// Identifies the "received data available" interrupt.
-const IIR_REG_IID_RDA: u8 = 0b0000_0100;
+    /// Line Control Register
+    pub(crate) const LCR: u16 = 3;
 
-/// Offset of the FIFO configuration register.
-const FCR_OFFSET: u16 = 2;
+    /// Line Status Register
+    pub(crate) const LSR: u16 = 5;
+}
 
-/// Offset of the line control register, relative to serial port base address.
-const LC_REG_OFFSET: u16 = 3;
+// Interrupt Identification Register
+register_bitfields!(u8,
+    IIR[
+        INTERRUPT_PENDING OFFSET(0) NUMBITS(1) [],
+        INTERRUPT_ID OFFSET(1) NUMBITS(3) [
+            THRE = 0b001, // Transmit Holding Register Empty
+            RDA = 0b010   // Received Data Available
+        ]
+    ]
+);
 
-/// Bitmask for DLAB field of line control register.
-const LC_REG_DLAB_MASK: u8 = 0b1000_0000;
+// Interrupt Enable Register
+register_bitfields!(u8,
+    IER [
+        // IER: Interrupt Enable Register
+        RDA OFFSET(0) NUMBITS(1) [], // Received Data Available
+        THRE OFFSET(1) NUMBITS(1) [] // Transmit Holding Register Empty
+    ]
+);
 
-/// Offset of the line status register, relative to serial port base address.
-const LS_REG_OFFSET: u16 = 5;
+// Line Control Register
+register_bitfields!(u8,
+    LCR [
+        DLAB OFFSET(7) NUMBITS(1) [], // Divisor Latch Access Bit
+        PARITY OFFSET(3) NUMBITS(3) [
+            None = 0,
+            Odd = 1,
+            Even = 3,
+            Mark = 5,
+            Space = 7,
+        ],
+        STOP_BITS OFFSET(2) NUMBITS(1) [
+            One = 0,
+            Two = 1
+        ],
+        DATA_SIZE OFFSET(0) NUMBITS(2) [
+            Five = 0,
+            Six = 1,
+            Seven = 2,
+            Eight = 3
+        ]
+    ]
+);
 
-/// Bitmask for THRE field of line status register.
-///
-/// This flag, when set, indicates the transmit buffer is empty and another byte can be safely sent.
-const LS_REG_THRE_MASK: u8 = 0b0010_0000;
+// Line Status Register
+register_bitfields!(u8,
+    LSR [
+        THRE OFFSET(5) NUMBITS(1) [] // Transmit Holding Register Empty
+    ]
+);
 
 pub struct SerialPort<'a> {
     /// Base I/O port address
@@ -150,9 +180,10 @@ impl<'a> SerialPort<'a> {
     fn finish_rx(&self, res: Result<(), ErrorCode>, error: Error) {
         // Turn off RX interrupts
         unsafe {
-            let mut ier = io::inb(self.base + IER_REG_OFFSET);
-            ier &= !IER_RDA_MASK;
-            io::outb(self.base + IER_REG_OFFSET, ier);
+            let ier_value = io::inb(self.base + offsets::IER);
+            let mut ier: LocalRegisterCopy<u8, IER::Register> = LocalRegisterCopy::new(ier_value);
+            ier.modify(IER::RDA::CLEAR);
+            io::outb(self.base + offsets::IER, ier.get());
         }
 
         self.rx_buffer.take().map(|b| {
@@ -167,7 +198,7 @@ impl<'a> SerialPort<'a> {
             // Still have bytes to send
             let tx_index = self.tx_index.get();
             self.tx_buffer.map(|b| unsafe {
-                io::outb(self.base, b[tx_index]);
+                io::outb(self.base + offsets::THR, b[tx_index]);
             });
             self.tx_index.set(tx_index + 1);
         } else {
@@ -181,7 +212,7 @@ impl<'a> SerialPort<'a> {
             // Still have bytes to receive
             let rx_index = self.rx_index.get();
             self.rx_buffer.map(|b| unsafe {
-                b[rx_index] = io::inb(self.base);
+                b[rx_index] = io::inb(self.base + offsets::RBR);
             });
             self.rx_index.set(rx_index + 1);
         }
@@ -197,17 +228,21 @@ impl<'a> SerialPort<'a> {
         // highest-priority one. So we need to read IIR in a loop until the Interrupt Pending flag
         // becomes set (indicating that there are no more pending interrupts).
         loop {
-            let iir_val = unsafe { io::inb(self.base + IIR_REG_OFFSET) };
+            let iir_val = unsafe { io::inb(self.base + offsets::IIR) };
 
-            if iir_val & IIR_REG_IP_MASK != 0 {
+            let iir: LocalRegisterCopy<u8, IIR::Register> = LocalRegisterCopy::new(iir_val);
+
+            if iir.is_set(IIR::INTERRUPT_PENDING) {
                 // No interrupt pending for this port
                 return;
             }
 
-            match iir_val & IIR_REG_IID_MASK {
-                IIR_REG_IID_TBE => self.handle_tx_interrupt(),
-                IIR_REG_IID_RDA => self.handle_rx_interrupt(),
-                _ => unimplemented!(),
+            if iir.matches_all(IIR::INTERRUPT_ID::THRE) {
+                self.handle_tx_interrupt();
+            } else if iir.matches_all(IIR::INTERRUPT_ID::RDA) {
+                self.handle_rx_interrupt();
+            } else {
+                unimplemented!();
             }
         }
     }
@@ -230,43 +265,46 @@ impl<'a> Configure for SerialPort<'a> {
 
         // Compute value for the line control register
 
-        let mut lc_val = 0;
+        let mut lcr: LocalRegisterCopy<u8, LCR::Register> = LocalRegisterCopy::new(0);
 
-        lc_val |= match params.width {
-            Width::Six => 0b0000_0001,
-            Width::Seven => 0b0000_0010,
-            Width::Eight => 0b0000_0011,
-        };
+        lcr.modify(match params.width {
+            Width::Six => LCR::DATA_SIZE::Six,
+            Width::Seven => LCR::DATA_SIZE::Seven,
+            Width::Eight => LCR::DATA_SIZE::Eight,
+        });
 
-        lc_val |= match params.stop_bits {
-            StopBits::One => 0b0000_0000,
-            StopBits::Two => 0b0000_0100,
-        };
+        lcr.modify(match params.stop_bits {
+            StopBits::One => LCR::STOP_BITS::One,
+            StopBits::Two => LCR::STOP_BITS::Two,
+        });
 
-        lc_val |= match params.parity {
-            Parity::None => 0b0000_0000,
-            Parity::Odd => 0b0000_1000,
-            Parity::Even => 0b0001_1000,
-        };
+        lcr.modify(match params.parity {
+            Parity::None => LCR::PARITY::None,
+            Parity::Odd => LCR::PARITY::Odd,
+            Parity::Even => LCR::PARITY::Even,
+        });
+
+        lcr.modify(LCR::DLAB::SET);
 
         unsafe {
             // Program line control, and set DLAB so we can program baud divisor
-            io::outb(self.base + LC_REG_OFFSET, lc_val | LC_REG_DLAB_MASK);
+            io::outb(self.base + offsets::LCR, lcr.get());
 
             // Program the divisor and clear DLAB
+            lcr.modify(LCR::DLAB::CLEAR);
             let divisor_bytes = divisor.to_le_bytes();
-            io::outb(self.base, divisor_bytes[0]);
-            io::outb(self.base + 1, divisor_bytes[1]);
-            io::outb(self.base + LC_REG_OFFSET, lc_val);
+            io::outb(self.base + offsets::DLL, divisor_bytes[0]);
+            io::outb(self.base + offsets::DLH, divisor_bytes[1]);
+            io::outb(self.base + offsets::LCR, lcr.get());
 
             // Disable FIFOs
-            io::outb(self.base + FCR_OFFSET, 0);
+            io::outb(self.base + offsets::FCR, 0);
 
             // Read IIR once to clear any pending interrupts
-            let _ = io::inb(self.base + IIR_REG_OFFSET);
+            let _ = io::inb(self.base + offsets::IIR);
 
             // Start with all interrupts disabled
-            io::outb(self.base + IER_REG_OFFSET, 0);
+            io::outb(self.base + offsets::IER, 0);
         }
 
         Ok(())
@@ -292,7 +330,7 @@ impl<'a> Transmit<'a> for SerialPort<'a> {
         }
 
         // Transmit the first byte
-        unsafe { io::outb(self.base, tx_buffer[0]) };
+        unsafe { io::outb(self.base + offsets::THR, tx_buffer[0]) };
 
         self.tx_buffer.replace(tx_buffer);
         self.tx_len.set(tx_len);
@@ -300,9 +338,10 @@ impl<'a> Transmit<'a> for SerialPort<'a> {
 
         // Enable TX interrupts
         unsafe {
-            let mut ier = io::inb(self.base + IER_REG_OFFSET);
-            ier |= IER_THRE_MASK;
-            io::outb(self.base + IER_REG_OFFSET, ier);
+            let ier_value = io::inb(self.base + offsets::IER);
+            let mut ier: LocalRegisterCopy<u8, IER::Register> = LocalRegisterCopy::new(ier_value);
+            ier.modify(IER::THRE::SET);
+            io::outb(self.base + offsets::IER, ier.get());
         }
 
         Ok(())
@@ -348,9 +387,10 @@ impl<'a> Receive<'a> for SerialPort<'a> {
 
         // Enable RX interrupts
         unsafe {
-            let mut ier = io::inb(self.base + IER_REG_OFFSET);
-            ier |= IER_RDA_MASK;
-            io::outb(self.base + IER_REG_OFFSET, ier);
+            let ier_value = io::inb(self.base + offsets::IER);
+            let mut ier: LocalRegisterCopy<u8, IER::Register> = LocalRegisterCopy::new(ier_value);
+            ier.modify(IER::RDA::SET);
+            io::outb(self.base + offsets::IER, ier.get());
         }
 
         Ok(())
@@ -480,14 +520,15 @@ impl IoWrite for BlockingSerialPort {
             for b in buf {
                 // Wait for any pending transmission to complete
                 loop {
-                    let line_status = io::inb(self.0 + LS_REG_OFFSET);
-                    let thre_flag = line_status & LS_REG_THRE_MASK;
-                    if thre_flag != 0 {
+                    let line_status_value = io::inb(self.0 + offsets::LSR);
+                    let lsr: LocalRegisterCopy<u8, LSR::Register> =
+                        LocalRegisterCopy::new(line_status_value);
+                    if lsr.is_set(LSR::THRE) {
                         break;
                     }
                 }
 
-                io::outb(self.0, *b);
+                io::outb(self.0 + offsets::THR, *b);
             }
         }
 
