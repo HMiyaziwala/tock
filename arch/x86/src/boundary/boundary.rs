@@ -15,6 +15,10 @@ use crate::segmentation::{USER_CODE, USER_DATA};
 
 use super::UserContext;
 
+/// Number of exceptions reserved in the IDT by Intel.
+/// Reference: https://en.wikipedia.org/wiki/Interrupt_descriptor_table#Common_IDT_layouts
+pub const IDT_RESERVED_EXCEPTIONS: u8 = 32;
+
 /// Defines the usermode-kernelmode ABI for x86 platforms.
 pub struct Boundary;
 
@@ -156,7 +160,7 @@ impl UserspaceKernelBoundary for Boundary {
         let int_num = unsafe { super::switch_to_user(state, &mut err_code) };
 
         let reason = match int_num as u8 {
-            0..=0x1f => {
+            0..IDT_RESERVED_EXCEPTIONS => {
                 state.exception = int_num as u8;
                 state.err_code = err_code;
                 ContextSwitchReason::Fault
