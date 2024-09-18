@@ -23,6 +23,7 @@ use kernel::hil::time::{Alarm, AlarmClient, Frequency, Ticks, Ticks32, Time};
 use kernel::ErrorCode;
 use tock_cells::numeric_cell_ext::NumericCellExt;
 use tock_cells::optional_cell::OptionalCell;
+use tock_registers::{register_bitfields, LocalRegisterCopy};
 use x86::io;
 
 /// Frequency of the PIT's internal oscillator
@@ -83,14 +84,21 @@ const PIT_CD0: u16 = 0x0040;
 /// I/O port address for mode/command register
 const PIT_MCR: u16 = 0x0043;
 
-/// Specifies channel zero when writing to the mode/command register
-const PIT_MCR_C0: u8 = 0b00000000;
-
-/// Specifies lobyte/hibyte access mode when writing to the mode/command register
-const PIT_MCR_LOHI: u8 = 0b00110000;
-
-/// Specifies mode 2 (rate generator) when writing to the mode/command register
-const PIT_MCR_M2: u8 = 0b00000100;
+// Bitfield for the mode/command register
+register_bitfields!(u8,
+    PIT_MCR [
+        BCD OFFSET(0) NUMBITS(1) [],
+        MODE OFFSET(1) NUMBITS(3) [
+            M2 = 0b010, // Rate generator
+        ],
+        ACCESS OFFSET(4) NUMBITS(2) [
+            LOHI = 0b11, // Lobyte/hibyte access mode
+        ],
+        CHANNEL OFFSET(6) NUMBITS(2) [
+            C0 = 0b00, // Channel 0
+        ]
+    ]
+);
 
 /// Timer based on 8253 "PIT" hardware
 ///
@@ -130,9 +138,13 @@ impl<'a, const R: u16> Pit<'a, R> {
         // * Interrupts will be handled properly
         // * Nobody else is accessing the PIT at the same time (shouldn't be possible unless the
         //   caller disregards the "Safety" section of `Pit::new`)
+
+        // Set mode 2 and program reload value
+        let mut pit_mcr = LocalRegisterCopy::<u8, PIT_MCR::Register>::new(0);
+        pit_mcr.modify(PIT_MCR::MODE::M2 + PIT_MCR::ACCESS::LOHI + PIT_MCR::CHANNEL::C0);
+
         unsafe {
-            // Set mode 2 and program reload value
-            io::outb(PIT_MCR, PIT_MCR_C0 | PIT_MCR_LOHI | PIT_MCR_M2);
+            io::outb(PIT_MCR, pit_mcr.get());
             io::outb(PIT_CD0, R as u8);
             io::outb(PIT_CD0, (R >> 8) as u8);
         }
