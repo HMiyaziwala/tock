@@ -95,13 +95,13 @@ impl<'a, const PR: u16> Chip for Pc<'a, PR> {
 
     #[cfg(target_arch = "x86")]
     fn sleep(&self) {
-        use x86::bits32::eflags::{self, EFlags};
+        use x86_mirror::bits32::eflags;
 
         // On conventional embedded architectures like ARM and RISC-V, interrupts must be disabled
         // before going to sleep. But on x86 it is the opposite; we must ensure interrupts are
         // enabled before issuing the HLT instruction. Otherwise we will never wake up.
         let eflags = unsafe { eflags::read() };
-        let enabled = eflags.contains(EFlags::FLAGS_IF);
+        let enabled = eflags.contains(eflags::EFlagsBitField::FLAGS_IF);
 
         if enabled {
             // Interrupts are already enabled, so go ahead and HLT.

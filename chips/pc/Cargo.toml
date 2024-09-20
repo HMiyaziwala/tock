@@ -15,3 +15,4 @@ tock-registers = { path = "../../libraries/tock-register-interface" }
 tock-cells = { path = "../../libraries/tock-cells" }
 # todo: remove external dependency
 x86 = "0.51"
+x86-mirror = { path = "../../libraries/x86" }

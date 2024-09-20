@@ -15,15 +15,15 @@ pub fn atomic<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    use x86::bits32::eflags::{self, EFlags};
-    use x86::irq;
+    use x86_mirror::bits32::eflags;
+    use x86_mirror::irq;
 
     // Safety: We assume that this function is only ever called from inside the Tock kernel itself
     //         running with a CPL of 0. This allows us to read EFLAGS and disable/enable interrupts
     //         without fear of triggering an exception.
     unsafe {
         let eflags = eflags::read();
-        let enabled = eflags.contains(EFlags::FLAGS_IF);
+        let enabled = eflags.contains(eflags::EFlagsBitField::FLAGS_IF);
 
         if enabled {
             irq::disable();
