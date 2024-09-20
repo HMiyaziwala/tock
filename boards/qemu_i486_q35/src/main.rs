@@ -30,7 +30,7 @@ use kernel::syscall::SyscallDriver;
 use kernel::{create_capability, static_init, Kernel};
 
 use x86::bits32::paging::{PDEntry, PTEntry, PD, PT};
-use x86_mirror::irq;
+use x86::irq;
 
 use pc::pit::{Pit, RELOAD_1KHZ};
 use pc::{Pc, PcComponent};

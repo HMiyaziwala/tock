@@ -9,7 +9,7 @@
 //! * https://wiki.osdev.org/8259_PIC
 //! * https://github.com/rust-osdev/pic8259
 
-use x86_mirror::io;
+use x86::io;
 use tock_x86::IDT_RESERVED_EXCEPTIONS;
 
 /// PIC initialization command

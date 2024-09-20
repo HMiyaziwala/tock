@@ -3,13 +3,10 @@
 # Copyright Tock Contributors 2022.
 
 [package]
-name = "x86"
+name = "bitflags"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 edition = "2021"
 
 [lints]
 workspace = true
-
-[dependencies]
-bitflags = { path = "./libraries/bitflags" }

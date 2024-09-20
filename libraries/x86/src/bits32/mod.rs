@@ -1,11 +1,10 @@
 //! Data structures and functions used by 32-bit mode.
 
 pub mod eflags;
-// pub mod eflags::EFlagsBitField;
-
-// pub mod paging;
-// pub mod segmentation;
-// pub mod task;
+#[allow(dead_code)]
+pub mod paging;
+pub mod segmentation;
+pub mod task;
 
 #[cfg(target_arch = "x86")]
 use core::arch::asm;

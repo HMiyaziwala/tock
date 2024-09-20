@@ -4,7 +4,7 @@
 
 use core::fmt::Write;
 
-use x86_mirror::bits32::eflags::{self, EFlags};
+use x86::bits32::eflags::EFlags;
 
 use kernel::process::FunctionCall;
 use kernel::syscall::{ContextSwitchReason, Syscall, SyscallReturn, UserspaceKernelBoundary};
@@ -55,7 +55,7 @@ impl UserspaceKernelBoundary for Boundary {
         let esp = (app_brk as u32) - 16;
 
         let mut eflags = EFlags::new();
-        eflags.set(eflags::EFlagsBitField::FLAGS_IF::SET);
+        eflags.set(EFlags::FLAGS_IF, true);
 
         state.eax = 0;
         state.ebx = 0;

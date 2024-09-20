@@ -20,7 +20,7 @@
 //! to use these symbols to compute the addresses of all the rest.
 
 use x86::dtables::{self, DescriptorTablePointer};
-use x86_mirror::irq::{BREAKPOINT_VECTOR, DEBUG_VECTOR, OVERFLOW_VECTOR};
+use x86::irq::{BREAKPOINT_VECTOR, DEBUG_VECTOR, OVERFLOW_VECTOR};
 use x86::segmentation::{BuildDescriptor, Descriptor, DescriptorBuilder, GateDescriptorBuilder};
 use x86::Ring;
 

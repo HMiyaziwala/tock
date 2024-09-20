@@ -1,115 +1,81 @@
 //! Processor state stored in the EFLAGS register.
 
+use bitflags::*;
+
 use crate::Ring;
 use core::arch::asm;
-use tock_registers::{
-    debug::RegisterDebugInfo,
-    fields::{Field, FieldValue},
-    register_bitfields, LocalRegisterCopy,
-};
 
-register_bitfields!(u32,
-    pub EFlagsBitField [
+bitflags! {
+    /// The EFLAGS register.
+    pub struct EFlags: u32 {
         /// ID Flag (ID)
-        FLAGS_ID OFFSET(21) NUMBITS(1) [],
+        const FLAGS_ID = 1 << 21;
         /// Virtual Interrupt Pending (VIP)
-        FLAGS_VIP OFFSET(20) NUMBITS(1) [],
+        const FLAGS_VIP = 1 << 20;
         /// Virtual Interrupt Flag (VIF)
-        FLAGS_VIF OFFSET(19) NUMBITS(1) [],
+        const FLAGS_VIF = 1 << 19;
         /// Alignment Check (AC)
-        FLAGS_AC OFFSET(18) NUMBITS(1) [],
+        const FLAGS_AC = 1 << 18;
         /// Virtual-8086 Mode (VM)
-        FLAGS_VM OFFSET(17) NUMBITS(1) [],
+        const FLAGS_VM = 1 << 17;
         /// Resume Flag (RF)
-        FLAGS_RF OFFSET(16) NUMBITS(1) [],
+        const FLAGS_RF = 1 << 16;
         /// Nested Task (NT)
-        FLAGS_NT OFFSET(14) NUMBITS(1) [],
-        /// I/O Privilege Level (IOPL)
-        FLAGS_IOPL OFFSET(12) NUMBITS(2) [
-            FLAGS_IOPL0 = 0b00,
-            FLAGS_IOPL1 = 0b01,
-            FLAGS_IOPL2 = 0b10,
-            FLAGS_IOPL3 = 0b11
-        ],
+        const FLAGS_NT = 1 << 14;
+        /// I/O Privilege Level (IOPL) 0
+        const FLAGS_IOPL0 = 0b00 << 12;
+        /// I/O Privilege Level (IOPL) 1
+        const FLAGS_IOPL1 = 0b01 << 12;
+        /// I/O Privilege Level (IOPL) 2
+        const FLAGS_IOPL2 = 0b10 << 12;
+        /// I/O Privilege Level (IOPL) 3
+        const FLAGS_IOPL3 = 0b11 << 12;
         /// Overflow Flag (OF)
-        FLAGS_OF OFFSET(11) NUMBITS(1) [],
+        const FLAGS_OF = 1 << 11;
         /// Direction Flag (DF)
-        FLAGS_DF OFFSET(10) NUMBITS(1) [],
+        const FLAGS_DF = 1 << 10;
         /// Interrupt Enable Flag (IF)
-        FLAGS_IF OFFSET(9) NUMBITS(1) [],
+        const FLAGS_IF = 1 << 9;
         /// Trap Flag (TF)
-        FLAGS_TF OFFSET(8) NUMBITS(1) [],
+        const FLAGS_TF = 1 << 8;
         /// Sign Flag (SF)
-        FLAGS_SF OFFSET(7) NUMBITS(1) [],
+        const FLAGS_SF = 1 << 7;
         /// Zero Flag (ZF)
-        FLAGS_ZF OFFSET(6) NUMBITS(1) [],
+        const FLAGS_ZF = 1 << 6;
         /// Auxiliary Carry Flag (AF)
-        FLAGS_AF OFFSET(4) NUMBITS(1) [],
+        const FLAGS_AF = 1 << 4;
         /// Parity Flag (PF)
-        FLAGS_PF OFFSET(2) NUMBITS(1) [],
+        const FLAGS_PF = 1 << 2;
         /// Bit 1 is always 1.
-        FLAGS_A1 OFFSET(1) NUMBITS(1) [],
+        const FLAGS_A1 = 1 << 1;
         /// Carry Flag (CF)
-        FLAGS_CF OFFSET(0) NUMBITS(1) []
-    ]
-);
-
-pub struct EFlags {
-    register: LocalRegisterCopy<u32, EFlagsBitField::Register>,
+        const FLAGS_CF = 1 << 0;
+    }
 }
 
 impl EFlags {
     /// Creates a new Flags entry. Ensures bit 1 is set.
     pub const fn new() -> EFlags {
-        EFlags {
-            register: LocalRegisterCopy::new(0),
-        }
+        EFlags::FLAGS_A1
     }
 
     /// Creates a new Flags with the given I/O privilege level.
     pub const fn from_priv(iopl: Ring) -> EFlags {
-        let field = match iopl {
-            Ring::Ring0 => EFlagsBitField::FLAGS_IOPL::FLAGS_IOPL0,
-            Ring::Ring1 => EFlagsBitField::FLAGS_IOPL::FLAGS_IOPL1,
-            Ring::Ring2 => EFlagsBitField::FLAGS_IOPL::FLAGS_IOPL2,
-            Ring::Ring3 => EFlagsBitField::FLAGS_IOPL::FLAGS_IOPL3,
-        };
         EFlags {
-            register: LocalRegisterCopy::new(field.value),
+            bits: (iopl as u32) << 12,
         }
     }
-
-    pub fn bits(&self) -> u32 {
-        self.register.get()
-    }
-
-    pub fn contains(&self, field: Field<u32, EFlagsBitField::Register>) -> bool {
-        self.register.is_set(field)
-    }
-
-    pub fn set(&mut self, value: FieldValue<u32, EFlagsBitField::Register>) {
-        self.register.modify(value);
-    }
 }
 
-#[inline(always)]
-pub fn from_bits_truncate(val: u32) -> EFlags {
-    let mut mask = 0;
-    for field in EFlagsBitField::Register::fields() {
-        mask |= field.mask;
-    }
-    EFlags {
-        register: LocalRegisterCopy::new(val & mask),
-    }
-}
-
+#[cfg(target_arch = "x86")]
 #[inline(always)]
 pub unsafe fn read() -> EFlags {
     let r: u32;
     asm!("pushfl; popl {0}", out(reg) r, options(att_syntax));
-    from_bits_truncate(r)
+    EFlags::from_bits_truncate(r)
 }
 
+#[cfg(target_arch = "x86")]
 #[inline(always)]
 pub unsafe fn set(val: EFlags) {
     asm!("pushl {0}; popfl", in(reg) val.bits(), options(att_syntax));

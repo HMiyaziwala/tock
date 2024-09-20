@@ -24,7 +24,7 @@ use kernel::ErrorCode;
 use tock_cells::numeric_cell_ext::NumericCellExt;
 use tock_cells::optional_cell::OptionalCell;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
-use x86_mirror::io;
+use x86::io;
 
 /// Frequency of the PIT's internal oscillator
 ///
